@@ -240,12 +240,13 @@ def _deny_token_match(pattern: str, argv: list[str]) -> bool:
         if a in _LONG_TO_SHORT:
             short.add(_LONG_TO_SHORT[a])
     for p in rest_p:
-        if re.fullmatch(r"-[a-z]{2,}", p, re.IGNORECASE) and "*" not in p:
-            if not set(p[1:]) <= short:
+        core = p.rstrip("*")  # `-rf*` means "these flags, possibly more"
+        if re.fullmatch(r"-[a-z]{2,}", core, re.IGNORECASE):
+            if not set(core[1:]) <= short:
                 return False
             continue
-        if re.fullmatch(r"-[a-z]", p, re.IGNORECASE):
-            if p[1] not in short:
+        if re.fullmatch(r"-[a-z]", core, re.IGNORECASE):
+            if core[1] not in short:
                 return False
             continue
         if not any(_token_match(p, a) for a in remaining):

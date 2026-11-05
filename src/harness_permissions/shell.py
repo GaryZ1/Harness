@@ -548,20 +548,25 @@ def _split_commands(tokens: list[tuple[str, object]], origin: str, out: ShellAna
     pending_redirect: tuple[str, str] | None = None
     piped = False
     after_group = False
+    dangling = [False]  # a binary operator still waiting for its right-hand command
     i = 0
 
     def finish(op: str | None) -> None:
         nonlocal cur, piped, after_group
         if pending_redirect is not None:
             raise ShellParseError(f"redirection {pending_redirect[1]!r} without a target")
-        if cur.words or cur.env or cur.redirects:
+        had_content = bool(cur.words or cur.env or cur.redirects)
+        if had_content:
+            dangling[0] = False
             cur.piped_input = piped
             cur.background = op == "&"
             commands.append(cur)
-        elif op in {"|", "|&", "&&", "||"} and not after_group:
-            raise ShellParseError(f"syntax error near {op!r}")
+        elif (op in {"|", "|&", "&&", "||"} and not after_group) or (op is None and dangling[0] and not after_group):
+            raise ShellParseError(f"syntax error near {op or 'end of input'!r}")
         piped = op in {"|", "|&"}
         after_group = False
+        if not (op == "\n" and not had_content):  # `a &&<newline>b` is legal bash
+            dangling[0] = op in {"|", "|&", "&&", "||"}
         cur = SimpleCommand(words=[], origin=origin)
 
     while i < len(tokens):
@@ -611,6 +616,7 @@ def _split_commands(tokens: list[tuple[str, object]], origin: str, out: ShellAna
             commands.extend(inner)
             piped = False
             after_group = True
+            dangling[0] = False
             i = j + 1
             continue
         if op == ")":

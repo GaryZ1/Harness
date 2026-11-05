@@ -10,8 +10,8 @@ import pytest
 
 from harness_sandbox import (
     EnvPolicy,
-    EscapeHatches,
     EscapeHatchError,
+    EscapeHatches,
     FilesystemPolicy,
     NetworkMode,
     NetworkPolicy,
