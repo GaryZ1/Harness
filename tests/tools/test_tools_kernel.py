@@ -238,3 +238,25 @@ def test_local_runner_caps_captured_output(tmp_path):
         CommandRequest(command=f"{sys.executable} -c \"print('y' * 5000)\"", cwd=str(tmp_path), max_output_bytes=100)
     )
     assert res.ok and len(res.stdout) == 100 and res.stdout_bytes > 5000 and res.output_truncated
+
+
+def test_keyword_style_sandbox_runner_is_adapted(ws, ctx):
+    class Violation:
+        def __str__(self):
+            return "write denied: /etc/hosts"
+
+    class KwResult:
+        exit_code, stdout, stderr, timed_out, truncated, duration_s = 1, "", "denied", False, False, 0.2
+        sandbox, violations = "bwrap", (Violation(),)
+
+    class KeywordRunner:  # the shape of harness_sandbox runners: run(argv, *, cwd, env, timeout, stdin)
+        def run(self, argv, *, cwd=None, env=None, timeout=None, stdin=None):
+            self.seen = (argv, cwd, timeout)
+            return KwResult()
+
+    runner = KeywordRunner()
+    r = ToolRegistry()
+    register_kernel(r, ws, runner=runner)
+    out = r.execute(ToolCall("c", "bash", {"command": "echo x > /etc/hosts"}), ctx)
+    assert runner.seen == ("echo x > /etc/hosts", str(ws.root), 120.0)
+    assert out.is_error and out.metadata["sandbox_id"] == "bwrap" and "write denied: /etc/hosts" in out.content

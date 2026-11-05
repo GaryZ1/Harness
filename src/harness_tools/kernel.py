@@ -41,7 +41,7 @@ from harness_core.types import ToolOutcome, ToolSpec
 from . import descriptions as D
 from .errors import ToolInputError, WorkspaceError
 from .registry import Tool, ToolInvocation, ToolRegistry
-from .runner import CommandRequest, CommandRunner, LocalSubprocessRunner
+from .runner import CommandRequest, CommandRunner, LocalSubprocessRunner, as_command_runner
 from .workspace import Workspace
 
 READ_DEFAULT_LIMIT = 2_000
@@ -176,7 +176,7 @@ class Kernel:
         if profile not in PROFILE_NAMES:
             raise ValueError(f"unknown profile {profile!r}; choose one of {sorted(PROFILE_NAMES)}")
         self.ws = workspace
-        self.runner: CommandRunner = runner or LocalSubprocessRunner()
+        self.runner: CommandRunner = as_command_runner(runner) if runner is not None else LocalSubprocessRunner()
         self.names = PROFILE_NAMES[profile]
         self.bash_open_world = bash_open_world
         self.bash_env = dict(bash_env or {})

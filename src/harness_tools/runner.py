@@ -16,6 +16,7 @@ Research basis (``reports/SOTA agentic harness reference.md`` §5.7 step 4, §5.
 
 from __future__ import annotations
 
+import inspect
 import os
 import shutil
 import signal
@@ -220,7 +221,55 @@ class LocalSubprocessRunner:
             proc.kill()
 
 
+class KeywordRunnerAdapter:
+    """Adapts a keyword-style runner, ``run(argv, *, cwd, env, timeout, stdin) -> result``, to
+    :class:`CommandRunner`. This is the shape the sandbox package's hardened runners expose. Result fields are
+    read with ``getattr`` (``exit_code``, ``stdout``, ``stderr``, ``timed_out``, ``truncated``,
+    ``duration_s``, ``stdout_bytes``, ``stderr_bytes``, ``sandbox``/``sandbox_id``, ``violations``),
+    so no import of the other package is needed.
+    """
+
+    def __init__(self, runner: object) -> None:
+        self.inner = runner
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        r = self.inner.run(  # type: ignore[attr-defined]
+            request.command, cwd=request.cwd, env=dict(request.env) if request.env else None, timeout=request.timeout_s, stdin=request.stdin
+        )
+        stdout, stderr = str(getattr(r, "stdout", "") or ""), str(getattr(r, "stderr", "") or "")
+        sandbox = getattr(r, "sandbox_id", None) or getattr(r, "sandbox", None) or None
+        timed_out = bool(getattr(r, "timed_out", False))
+        return CommandResult(
+            exit_code=None if timed_out else getattr(r, "exit_code", None),
+            stdout=stdout,
+            stderr=stderr,
+            duration_s=float(getattr(r, "duration_s", 0.0) or 0.0),
+            timed_out=timed_out,
+            stdout_bytes=int(getattr(r, "stdout_bytes", 0) or len(stdout.encode())),
+            stderr_bytes=int(getattr(r, "stderr_bytes", 0) or len(stderr.encode())),
+            output_truncated=bool(getattr(r, "truncated", getattr(r, "output_truncated", False))),
+            sandbox_id=str(sandbox) if sandbox else None,
+            violations=[str(v) for v in (getattr(r, "violations", ()) or ())],
+        )
+
+
+def as_command_runner(runner: object) -> CommandRunner:
+    """Return ``runner`` itself if it takes a :class:`CommandRequest`, else wrap a keyword-style runner."""
+    run = getattr(runner, "run", None)
+    if run is None:
+        raise CommandRunnerError(f"{type(runner).__name__} has no run() method")
+    try:
+        params = inspect.signature(run).parameters
+    except (TypeError, ValueError):
+        return runner  # type: ignore[return-value]
+    if "cwd" in params:
+        return KeywordRunnerAdapter(runner)
+    return runner  # type: ignore[return-value]
+
+
 __all__ = [
+    "KeywordRunnerAdapter",
+    "as_command_runner",
     "CommandRequest",
     "CommandResult",
     "CommandRunner",
