@@ -51,6 +51,8 @@ CommandResult(exit_code, stdout, stderr, duration_s, timed_out, stdout_bytes, st
 
 A runner must not raise for a failing command: a non-zero exit or a timeout is a result. It raises `CommandRunnerError` only when it is itself broken. Hardened runners (seatbelt, bubblewrap, containers, egress proxy) belong to the sandbox package and report `sandbox_id` and `violations`. The kernel surfaces violations to the model in a `<sandbox_violations>` block (srt convention).
 
+Runners with the keyword signature `run(argv, *, cwd, env, timeout, stdin)`, the shape the sandbox package's hardened runners use, are wrapped automatically by `as_command_runner` / `KeywordRunnerAdapter`. Their result fields (`exit_code`, `stdout`, `stderr`, `timed_out`, `truncated`, `duration_s`, byte counts, `sandbox`, `violations`) are read with `getattr`, so `harness_tools` never imports the sandbox package.
+
 `LocalSubprocessRunner` provides **no OS-level confinement**. It runs `bash -c` (falling back to `sh -c`) in a new session/process group and kills the whole group on timeout. It drains stdout and stderr on threads with a per-stream capture cap, and passes only an allowlisted environment (`PATH HOME LANG LC_ALL LC_CTYPE TERM TMPDIR TZ USER LOGNAME SHELL`), so harness API keys never reach model-run commands. Set `inherit_env=True` to opt out.
 
 ## Defaults

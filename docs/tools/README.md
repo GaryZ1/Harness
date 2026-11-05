@@ -25,7 +25,7 @@ The research converges on a few points. This package encodes each one in code, n
 4. **Bounded output.** Every result is capped at 25,000 tokens (Claude Code's default). The cap is never silent: the full payload is offloaded to a workspace file and the model gets a preview, the path and a "narrow your query" hint.
 5. **Definitions are a context budget.** Past 10 tools or 10K definition tokens, all but 3–5 hot tools are deferred behind `tool_search`. That cuts definition tokens by 85% and raised Opus 4.5 MCP-eval accuracy from 79.5% to 88.1%. The search tool is never deferred, and the tool array is deterministic and frozen per session so the prompt cache survives.
 6. **Concurrency classes.** Read-only tools run in parallel and mutating tools run alone, in order (Claude Agent SDK rule). Results always come back in call order, so the loop answers every `tool_use` in ONE user message.
-7. **Sandbox the shell, not each tool.** `bash` runs through one `CommandRunner` protocol, so a hardened runner can be swapped in without touching the tools. The default local runner is explicitly *not* a sandbox.
+7. **Sandbox the shell, not each tool.** `bash` runs through one `CommandRunner` protocol, so a hardened runner can be swapped in without touching the tools. Keyword-style sandbox runners are adapted automatically. The default local runner is explicitly *not* a sandbox.
 8. **MCP is the tool bus, and its servers are untrusted.** MCP tools are namespaced `mcp__server__tool`, deferred, `open_world` (their output taints the session) and annotation-blind unless the server is vetted. Approved descriptions can be pinned so a later "rug pull" is refused.
 
 ## Architecture
@@ -85,4 +85,4 @@ request = ModelRequest(system=SYSTEM, messages=messages, tools=registry.specs())
 messages.append(registry.run_tool_uses(response, ctx))      # ONE user message, every tool_use answered
 ```
 
-Tests: `python3 -m pytest -p no:cacheprovider tests/tools` (80 tests, offline). The MCP tests drive a fake stdio server, `tests/tools/tools_fake_mcp_server.py`.
+Tests: `python3 -m pytest -p no:cacheprovider tests/tools` (83 tests, offline). The MCP tests drive a fake stdio server, `tests/tools/tools_fake_mcp_server.py`.

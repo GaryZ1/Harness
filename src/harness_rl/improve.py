@@ -16,8 +16,8 @@ with the pitfalls of §9.8 / §11.8 enforced in code:
    above zero **and** an effect of at least the noise band (default 5 points; single runs swing
    2-6), with Bonferroni correction across candidates in the same iteration.
 5. **Guards**: no loss on the regression split beyond ``regression_tolerance`` (default 0), cost
-   per success and p95 latency within budget (default +10%), and no increase in the hack-signal
-   rate.
+   per success and p95 latency within budget (default +10%, plus 1 s absolute slack on latency so
+   sub-second jitter cannot block a change), and no increase in the hack-signal rate.
 6. The best eligible candidate is committed as a new config version; every proposal, evaluation,
    decision and rollback is appended to a **hash-chained audit log**; :meth:`ImprovementLoop.rollback`
    restores any earlier version.
@@ -337,6 +337,8 @@ class GateConfig:
     regression_tolerance: float = 0.0
     max_cost_increase: float = 0.10
     max_latency_increase: float = 0.10
+    latency_abs_slack_s: float = 1.0    # ignore sub-second p95 jitter (relative budgets alone flake on fast tasks)
+    cost_abs_slack_usd: float = 0.0
     max_hack_rate_increase: float = 0.0
     max_heldout_uses: int = 20
     max_candidates: int = 4
@@ -379,8 +381,8 @@ class IterationReport:
         return next((d for d in self.decisions if d.status == "accepted"), None)
 
 
-def _ratio_exceeds(cand: float | None, base: float | None, limit: float) -> bool:
-    return cand is not None and base is not None and base > 0 and cand > base * (1 + limit) + 1e-12
+def _ratio_exceeds(cand: float | None, base: float | None, limit: float, abs_slack: float = 0.0) -> bool:
+    return cand is not None and base is not None and base > 0 and cand > base * (1 + limit) + abs_slack + 1e-12
 
 
 class ImprovementLoop:
@@ -495,9 +497,9 @@ class ImprovementLoop:
                         reasons.append(f"regression suite dropped {base_reg.mean:.3f} -> {reg.mean:.3f}")
                 bg, cg = base_held.guards, held.guards
                 dec.guards = {"baseline": dict(bg), "candidate": dict(cg)}
-                if _ratio_exceeds(cg.get("cost_per_success_usd"), bg.get("cost_per_success_usd"), g.max_cost_increase):
+                if _ratio_exceeds(cg.get("cost_per_success_usd"), bg.get("cost_per_success_usd"), g.max_cost_increase, g.cost_abs_slack_usd):
                     reasons.append("cost per success over budget")
-                if _ratio_exceeds(cg.get("p95_wall_s"), bg.get("p95_wall_s"), g.max_latency_increase):
+                if _ratio_exceeds(cg.get("p95_wall_s"), bg.get("p95_wall_s"), g.max_latency_increase, g.latency_abs_slack_s):
                     reasons.append("p95 latency over budget")
                 if (cg.get("hack_rate") or 0.0) > (bg.get("hack_rate") or 0.0) + g.max_hack_rate_increase + 1e-12:
                     reasons.append("hack-signal rate increased (possible reward hacking)")

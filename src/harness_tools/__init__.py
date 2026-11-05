@@ -64,7 +64,7 @@ from .mcp import (
 )
 from .output import OutputPolicy, apply_budget, estimate_tokens
 from .registry import FailureTracker, Tool, ToolCallRecord, ToolInvocation, ToolRegistry, function_tool, tool_results_message
-from .runner import CommandRequest, CommandResult, CommandRunner, LocalSubprocessRunner
+from .runner import CommandRequest, CommandResult, CommandRunner, KeywordRunnerAdapter, LocalSubprocessRunner, as_command_runner
 from .schema import compile_schema, lint_schema, schema_from_function, validate
 from .workspace import Checkpointer, MemoryCheckpointer, Workspace
 
@@ -80,6 +80,7 @@ __all__ = [
     "FailureTracker",
     "FileStateError",
     "Kernel",
+    "KeywordRunnerAdapter",
     "LintFinding",
     "LocalSubprocessRunner",
     "MCPClient",
@@ -108,6 +109,7 @@ __all__ = [
     "WorkspaceError",
     "apply_budget",
     "apply_tiering",
+    "as_command_runner",
     "compile_schema",
     "connect_mcp_servers",
     "definition_tokens",
