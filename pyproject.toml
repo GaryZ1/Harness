@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "harness-memory"
+name = "agentic-harness"
 version = "0.1.0"
-description = "Production memory subsystem for agentic harnesses: instruction, working, semantic, episodic and procedural memory plus long-running task state."
+description = "A production agentic harness: agent loop and durable session log, context engineering, memory, tools and MCP, sandboxing, permissions, multi-agent orchestration, evals and RL, and observability - wired together by build_harness(HarnessConfig)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -13,6 +13,7 @@ dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.60"]
+otel = ["opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20", "opentelemetry-exporter-otlp>=1.20"]
 dev = ["pytest>=8", "ruff>=0.5"]
 
 [tool.setuptools.packages.find]

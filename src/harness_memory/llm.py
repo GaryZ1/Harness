@@ -2,7 +2,7 @@
 
 The pipeline only needs :class:`LLM` - a ``complete(system, prompt) -> str`` callable - so it can
 run against any provider or a deterministic fake in tests. :class:`AnthropicLLM` and
-:func:`run_memory_agent` use the official ``anthropic`` SDK (``pip install harness-memory[anthropic]``).
+:func:`run_memory_agent` use the official ``anthropic`` SDK (``pip install 'agentic-harness[anthropic]'``).
 The model id is always supplied by the caller (e.g. from configuration).
 """
 
@@ -51,7 +51,7 @@ class AnthropicLLM:
             try:
                 import anthropic
             except ImportError as exc:  # pragma: no cover - optional dependency
-                raise ImportError("install the 'anthropic' extra: pip install harness-memory[anthropic]") from exc
+                raise ImportError("install the 'anthropic' extra: pip install 'agentic-harness[anthropic]'") from exc
             client = anthropic.Anthropic()
         self.client = client
         self.model = model
