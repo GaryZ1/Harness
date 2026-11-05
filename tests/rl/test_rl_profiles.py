@@ -3,7 +3,15 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from harness_rl import HarnessProfile, ProfileAmbiguityError, ProfileError, ProfileMismatchMonitor, ProfileNotFoundError, ProfileRegistry, parse_profile
+from harness_rl import (
+    HarnessProfile,
+    ProfileAmbiguityError,
+    ProfileError,
+    ProfileMismatchMonitor,
+    ProfileNotFoundError,
+    ProfileRegistry,
+    parse_profile,
+)
 
 CONFIG = {
     "fallback": "generic",

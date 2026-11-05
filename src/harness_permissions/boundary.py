@@ -457,7 +457,7 @@ class _Classifier:
     def _segment(self, seg: SegmentProfile, cmd: SimpleCommand, cwd: str | None) -> None:
         if cmd.privileged:
             seg.add(Crossing.PRIVILEGE_ESCALATION, f"runs via {'/'.join(w for w in cmd.wrappers if w in {'sudo', 'doas', 'su', 'pkexec', 'run0'}) or cmd.executable}")
-        for name, value in cmd.env:
+        for name, _value in cmd.env:
             if DANGEROUS_ENV.match(name):
                 seg.add(Crossing.DANGEROUS_ENV, f"sets {name}")
         for reason in cmd.opaque:

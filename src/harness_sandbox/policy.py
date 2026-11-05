@@ -175,7 +175,13 @@ class FilesystemPolicy:
     deny_write: tuple[str, ...] = ()
     read_only_subpaths: tuple[str, ...] = DEFAULT_READ_ONLY_SUBPATHS
     workspace_writable: bool = True              # ignored in read-only mode
-    session_tmp: bool = True                     # per-session writable tmp (bound at /tmp in bwrap)
+    session_tmp: bool = True                     # per-session writable tmp directory
+
+    def __post_init__(self) -> None:
+        # Invariant: the default secret denies and protected subpaths can never be dropped, however
+        # the policy is built; a more specific ``allow_read`` is the only way to carve an exception.
+        object.__setattr__(self, "deny_read", _dedupe((*DEFAULT_DENY_READ, *self.deny_read)))
+        object.__setattr__(self, "read_only_subpaths", _dedupe((*DEFAULT_READ_ONLY_SUBPATHS, *self.read_only_subpaths)))
 
 
 @dataclass(frozen=True)
@@ -233,6 +239,9 @@ class EnvPolicy:
     deny: tuple[str, ...] = DEFAULT_ENV_DENY
     set: Mapping[str, str] = field(default_factory=dict)
     scrub_secret_values: bool = True             # drop any value the secret redactor flags
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "deny", _dedupe((*DEFAULT_ENV_DENY, *self.deny)))
 
 
 @dataclass(frozen=True)
@@ -327,8 +336,9 @@ class SandboxPolicy:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], *, admin: bool = False) -> "SandboxPolicy":
-        """Build from a mapping. Deny-type lists **extend** the defaults (defaults can only be
-        overridden by a more specific ``allow_read``); ``allowed_domains`` replaces the default list."""
+        """Build from a mapping. Deny-type lists **extend** the defaults (enforced by the dataclasses;
+        defaults can only be overridden by a more specific ``allow_read``); ``allowed_domains``
+        replaces the default list."""
         if not isinstance(data, Mapping):
             raise PolicyError("policy must be a mapping")
         _reject_unknown(data, {"mode", "filesystem", "network", "limits", "env", "escape_hatches", "redact_output"}, "policy")
@@ -338,11 +348,7 @@ class SandboxPolicy:
         if "redact_output" in data:
             kw["redact_output"] = _bool(data["redact_output"], "redact_output")
         if "filesystem" in data:
-            fs = _section(data["filesystem"], FilesystemPolicy, "filesystem")
-            for key, default in (("deny_read", DEFAULT_DENY_READ), ("read_only_subpaths", DEFAULT_READ_ONLY_SUBPATHS)):
-                if key in fs:
-                    fs[key] = _dedupe((*default, *fs[key]))
-            kw["filesystem"] = FilesystemPolicy(**fs)
+            kw["filesystem"] = FilesystemPolicy(**_section(data["filesystem"], FilesystemPolicy, "filesystem"))
         if "network" in data:
             net = _section(data["network"], NetworkPolicy, "network")
             if "mode" in net:
@@ -354,8 +360,6 @@ class SandboxPolicy:
             kw["limits"] = ResourceLimits(**_section(data["limits"], ResourceLimits, "limits"))
         if "env" in data:
             env = _section(data["env"], EnvPolicy, "env")
-            if "deny" in env:
-                env["deny"] = _dedupe((*DEFAULT_ENV_DENY, *env["deny"]))
             if "set" in env:
                 if not isinstance(env["set"], Mapping):
                     raise PolicyError("env.set must be a mapping")

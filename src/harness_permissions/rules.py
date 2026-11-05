@@ -253,6 +253,11 @@ def _deny_token_match(pattern: str, argv: list[str]) -> bool:
     return True
 
 
+def match_allow_text(rule: Rule, text: str) -> bool:
+    """Exact (allow-side) match of a shell rule against a command string."""
+    return rule.specifier is None or bool(_command_regex(rule.specifier, False).match(text))
+
+
 def match_command(rule: Rule, cmd: SimpleCommand, *, fuzzy: bool) -> bool:
     """Does shell rule ``rule`` match simple command ``cmd``?"""
     if rule.specifier is None:
