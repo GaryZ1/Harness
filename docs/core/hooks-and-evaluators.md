@@ -33,7 +33,7 @@ hooks.on(HookEvent.SESSION_START, lambda inp: HookResult(additional_context="Rep
 | `pre_model` | `request` | `updated_request`; `continue_=False` |
 | `post_model` | `request`, `response` | `additional_context`; `continue_=False` (the response is still appended) |
 | `pre_tool` | `tool_call`, `tool_spec` | `permission` (`allow`/`deny`/`ask`), `block` (= deny), `reason`, `updated_input`, `additional_context`, `continue_=False` |
-| `post_tool` / `post_tool_failure` | `tool_call`, `tool_spec`, `outcome` | `updated_outcome`, `additional_context`, `continue_=False` (after the batch) |
+| `post_tool` / `post_tool_failure` | `tool_call`, `tool_spec`, `outcome` | `updated_outcome`, `additional_context`, `continue_=False` (halts after the current tool group) |
 | `stop` | `last_assistant_message`, `stop_hook_active` | `block` + non-empty `reason` → continue with the reason; `continue_=False` → `halted_by_hook` |
 | `pre_compact` / `post_compact` | `data["trigger"]="auto"`, `data["reason"]`, (`summary`) | observation only |
 | `session_end` | `data["reason"]` | observation only (`AgentLoop.end_session`) |
