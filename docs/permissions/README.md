@@ -59,28 +59,31 @@ Each bullet below is a research finding that this package enforces in code rathe
 ## Quick start
 
 ```python
-from harness_core.types import RunContext, ToolCall
-from harness_permissions import (ApprovalBroker, Approver, HumanInTheLoopPolicy, PolicyEngine,
+import os
+
+from harness_core.types import PermissionBehavior, RunContext, ToolCall
+from harness_permissions import (ApprovalBroker, Approver, HumanInTheLoopPolicy, Layer, PolicyEngine,
                                  TwoStageClassifier, denial_outcome, discover_policy_files, load_layers)
 
 found = discover_policy_files(".")
 policy = load_layers(managed=found[Layer.MANAGED], project=found[Layer.PROJECT], user=found[Layer.USER])
-reviewer = TwoStageClassifier(model_client, model=os.environ["HARNESS_REVIEWER_MODEL"])  # model id from config
-engine = PolicyEngine(policy, cwd=".", reviewer=reviewer, sink=event_log)
+reviewer = TwoStageClassifier(model_client, os.environ["HARNESS_REVIEWER_MODEL"])  # any ModelClient; model id from config
+engine = PolicyEngine(policy, cwd=".", reviewer=reviewer, sink=event_log)        # event_log: any EventSink
 broker = ApprovalBroker(engine, state_path=".harness/approvals.json")
 
 ctx = RunContext(session_id="s_1", cwd=".")
-decision = engine.check(ToolCall("t1", "Bash", {"command": "npm test && git push origin feature"}), None, ctx)
-if decision.behavior.value == "ask":
-    decision = broker.request(call, spec, ctx, decision)      # UI calls broker.approve(id, Approver.human("alice"))
+call, spec = ToolCall("t1", "Bash", {"command": "npm test && git push origin feature"}), None
+decision = engine.check(call, spec, ctx)
+if decision.behavior is PermissionBehavior.ASK:
+    decision = broker.request(call, spec, ctx, decision)       # a UI thread calls broker.approve(item_id, Approver.human("alice"))
 if not decision.allowed:
-    result = denial_outcome(decision)                          # return to the model as the tool result
+    result = denial_outcome(decision)                           # hand back to the model as the tool result
 else:
     outcome = executor.execute(call, ctx)
-    outcome = engine.record_result(call, spec, ctx, outcome)   # taint + injection probe (annotates)
+    outcome = engine.record_result(call, spec, ctx, outcome)    # PostToolUse: taint + injection probe (annotates)
 
-# or, for a loop that does not understand ASK:
-policy_for_loop = HumanInTheLoopPolicy(engine, broker)
+# A loop that does not understand ASK can use the combined policy instead:
+loop_policy = HumanInTheLoopPolicy(engine, broker)
 ```
 
 Run the tests with `python3 -m pytest -p no:cacheprovider tests/permissions`.
