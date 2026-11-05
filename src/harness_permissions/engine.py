@@ -124,10 +124,6 @@ class SessionState:
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
-def _allow(layer: str, reason: str, **kw: Any) -> tuple[PermissionBehavior, str, str, dict[str, Any]]:
-    return PermissionBehavior.ALLOW, layer, reason, kw
-
-
 class PolicyEngine:
     """Layered permission policy. Thread-safe; one instance can serve many sessions."""
 
