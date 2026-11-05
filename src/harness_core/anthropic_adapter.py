@@ -92,6 +92,13 @@ class AnthropicModelClient:
             params["output_config"] = {"effort": self.effort}
         extra = {**self.extra, **request.extra}
         betas = list(self.betas) + list(extra.pop("betas", []) or [])
+        # Per-request effort (e.g. a sub-agent's ``extra["effort"]``) is not a top-level API
+        # parameter: it belongs in ``output_config.effort``.
+        effort = extra.pop("effort", None)
+        if effort is not None:
+            if effort not in EFFORT_LEVELS:
+                raise ConfigError(f"effort must be one of {EFFORT_LEVELS}, got {effort!r}")
+            params["output_config"] = {**params.get("output_config", {}), "effort": effort}
         if "output_config" in extra:
             params["output_config"] = {**params.get("output_config", {}), **extra.pop("output_config")}
         params.update(extra)

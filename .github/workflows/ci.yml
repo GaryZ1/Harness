@@ -17,6 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests
+      - run: ruff check src tests examples
       - run: pytest
       - run: python examples/quickstart.py
+      - run: python examples/harness_quickstart.py
