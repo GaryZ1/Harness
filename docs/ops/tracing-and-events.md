@@ -67,6 +67,7 @@ counts toward the run's budget, but it is not reported to metrics a second time.
 
 * `JsonlSpanExporter(path, fsync=False, max_bytes=None, backups=3)` appends one span per line under a cross-process `file_lock`, with optional size rotation. `read_spans(path)` skips a torn last line, and `span_tree(spans)` groups spans by parent.
 * `InMemorySpanExporter` serves tests and in-process sampling.
+* `critical_path(spans)` returns `CriticalPath(steps, total_steps, duration_ms)`: the longest *dependent* chain of `chat`/`execute_tool` steps. Overlapping siblings count as one parallel wave (Kimi K2.5's "critical steps"). Use it to check that a fan-out actually shortened the critical path.
 * `OTelSpanExporter(sdk_exporter)` converts finished spans, **keeping our ids**, into SDK `ReadableSpan`s for any OTel exporter. `otlp_exporter("http/protobuf" | "grpc")` builds one around the OTLP exporter. Both need `opentelemetry-sdk`.
 * `OTelTracer(otel_tracer=None)` implements the `Tracer` protocol directly on the OTel API, with the same policy and semconv.
 * When the dependency is missing, construction raises `OTelUnavailableError` (an `ImportError`) whose message gives the install command. `otel_available()` checks for it.

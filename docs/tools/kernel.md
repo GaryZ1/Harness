@@ -57,11 +57,11 @@ A runner must not raise for a failing command: a non-zero exit or a timeout is a
 
 | Setting | Default | Anchor |
 |---|---|---|
-| `read` page | 2,000 lines; lines cut at 2,000 chars; 100,000 chars per page | Claude Code `Read` (line limits); page size = the 25k-token cap |
+| `read` page | 2,000 lines; lines cut at 2,000 chars; 100,000 chars per page | our choice (mirrors Claude Code `Read`; page size = the 25k-token cap) |
 | Line-number format | `%6d\t` | `memory_20250818` / `text_editor` view |
 | Max file size (read/write) | 10 MB | our choice |
 | Image size | 5 MB | our choice (provider image limits) |
-| `bash` timeout | 120 s default, 600 s max | Claude Code `Bash` (2 min / 10 min) |
+| `bash` timeout | 120 s default, 600 s max | our choice (mirrors Claude Code `Bash`) |
 | `bash` output | 30,000 chars (≈ 7,500 tokens), head+tail, offloaded | our choice (stricter than the 25k-token global cap) |
 | Runner capture cap | 1 MB per stream | our choice (memory bound) |
 | `grep` / `glob` page | 100 results, `offset` pagination, max 1,000 | our choice |

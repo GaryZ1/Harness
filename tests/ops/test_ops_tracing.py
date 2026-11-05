@@ -292,3 +292,24 @@ def test_otel_span_exporter_keeps_our_ids():
     child = sink[0]
     assert child.context.trace_id == int(root.trace_id, 16) and child.parent.span_id == int(root.span_id, 16)
     assert child.kind == "I" and child.status.code == "unset"
+
+
+def test_critical_path_counts_parallel_fanout_once():
+    from harness_ops import CriticalPath, SpanData, SpanKind, critical_path
+
+    tid = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    def sd(sid, parent, start, end, op=None):
+        return SpanData(f"s{sid}", SpanContext(tid, f"{sid:016x}"), f"{parent:016x}" if parent else None, SpanKind.INTERNAL, start, end,
+                        {A.OPERATION_NAME: op} if op else {})
+
+    spans = [
+        sd(1, None, 0, 100, "invoke_agent"),
+        sd(2, 1, 0, 10, "chat"),
+        sd(3, 1, 10, 50, "execute_tool"), sd(4, 1, 12, 60, "execute_tool"), sd(5, 1, 15, 40, "execute_tool"),  # parallel fan-out
+        sd(6, 1, 60, 70, "chat"),
+        sd(7, 1, 70, 90, "execute_tool"),
+        sd(8, 7, 71, 80, "chat"), sd(9, 7, 80, 89, "chat"),  # a subagent inside the tool call: sequential steps
+    ]
+    cp = critical_path(spans)
+    assert cp == CriticalPath(steps=6, total_steps=8, duration_ms=100 / 1e6) and cp.parallelism == pytest.approx(8 / 6)

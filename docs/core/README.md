@@ -35,7 +35,7 @@ Each point is a research finding the code enforces, not a prompt suggestion.
              host (CLI / IDE / CI / server)               steer(text) ──┐   interrupt() ──┐
                          │ run(prompt | None, approvals)                │                 │
                          ▼                                              ▼                 ▼
- ┌──────────────────────────────────────── AgentLoop (harness, stateless between runs) ──────────────────────────┐
+ ┌──────────────────────────────────────────── AgentLoop (the harness) ───────────────────────────────────┐
  │  session_start ─▶ resume repair of a half-done tool batch ─▶ user_prompt_submit                                │
  │  ┌──────────────── loop ──────────────────────────────────────────────────────────────────────────────────┐   │
  │  │ compaction threshold? ─▶ Compactor ─▶ session.record_compaction (projection; log untouched)            │   │

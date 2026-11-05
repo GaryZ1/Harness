@@ -24,7 +24,7 @@ driver = LongRunDriver(
     prompts=LongRunPrompts("Build a clone of X", feature_list=".harness/task/feature_list.json",
                            progress_file=".harness/task/progress.md", init_script=".harness/task/init.sh",
                            persistence=True),
-    is_initialized=task.exists,                  # any () -> bool
+    is_initialized=lambda: task.initialized,     # any () -> bool
     is_complete=lambda: task.next_feature() is None,
     max_sessions=50,                             # required
     state_path="~/.harness/longrun-x.json",
@@ -37,12 +37,26 @@ session `<prefix>-<index>-<kind>` is created (fresh context); `loop_factory(sess
 `end_session()` unless the run paused. The driver stops when `is_complete()` is true, when the
 initializer did not create task state, when a run ends with a subtype in `TERMINAL_SUBTYPES`
 (refusal, denials, goal impossible, during-execution error, dollar budget, prompt blocked, halted,
-paused, interrupted), or after `max_sessions`. Turn, token and wall-clock budget results do not stop
-it: the next session continues the work. The optional state file (atomic JSON) records every
+paused, interrupted), or after `max_sessions`. Other results (turn, token and wall-clock budgets,
+context window, doom loop, consecutive errors) do not stop it: the next fresh session continues the work. The optional state file (atomic JSON) records every
 session so a restarted driver continues the numbering.
 
-Invariants such as "only `passes` may change" are not in these prompts' power to enforce: wire a
-`pre_tool` hook (e.g. around `harness_memory.task_state.guard_tool_call`).
+Invariants such as "only `passes` may change" are not in these prompts' power to enforce; wire a
+`pre_tool` hook:
+
+```python
+from harness_memory import guard_tool_call
+from harness_core import HookEvent, HookRegistry, HookResult, PermissionBehavior
+
+hooks = HookRegistry()
+
+def task_guard(inp):
+    decision = guard_tool_call(inp.tool_call.name, inp.tool_call.input, repo_root=repo)
+    if not decision.allow:
+        return HookResult(permission=PermissionBehavior.DENY, reason=decision.reason)
+
+hooks.on(HookEvent.PRE_TOOL, task_guard)
+```
 
 ## `RalphLoop`
 

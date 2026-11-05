@@ -232,22 +232,42 @@ _REPORT = detect_backends(probe=True) if sys.platform.startswith("linux") and sh
 needs_bwrap = pytest.mark.skipif(not (_REPORT and _REPORT.bwrap_usable), reason="bubblewrap not installed or user namespaces unavailable")
 
 
+@pytest.fixture
+def outside_tmp_home():
+    """A fake $HOME outside /tmp (bwrap replaces /tmp with a tmpfs, which would hide it trivially)."""
+    base = "/var/tmp" if os.access("/var/tmp", os.W_OK) else None
+    if base is None:
+        pytest.skip("/var/tmp not writable")
+    import tempfile
+
+    home = tempfile.mkdtemp(prefix="harness-sbx-home-", dir=base)
+    os.makedirs(os.path.join(home, ".ssh"))
+    with open(os.path.join(home, ".ssh", "id_ed25519"), "w") as fh:
+        fh.write("PRIVATE")
+    with open(os.path.join(home, "notes.txt"), "w") as fh:
+        fh.write("visible")
+    yield home
+    shutil.rmtree(home, ignore_errors=True)
+
+
 @needs_bwrap
-def test_bwrap_escape_suite(tree, tmp_path):
-    ws, home, _ = tree
+def test_bwrap_escape_suite(tree, tmp_path, outside_tmp_home):
+    ws, _, _ = tree
+    home = outside_tmp_home
     (ws / "link_out").symlink_to(home)
-    sockdir = tmp_path / "sockets"
-    sockdir.mkdir()
+    sockdir = os.path.join(home, "sockets")
+    os.mkdir(sockdir)
     srv = socket.socket(socket.AF_UNIX)
-    srv.bind(str(sockdir / "agent.sock"))
+    srv.bind(os.path.join(sockdir, "agent.sock"))
     srv.listen(1)
-    pol = SandboxPolicy(filesystem=FilesystemPolicy(deny_read=(str(sockdir),)))
+    pol = SandboxPolicy(filesystem=FilesystemPolicy(deny_read=(sockdir,)))
     py = sys.executable
     try:
-        with BubblewrapRunner(pol, ws, home=str(home)) as r:
+        with BubblewrapRunner(pol, ws, home=home) as r:
+            visible = r.run(["cat", os.path.join(home, "notes.txt")], timeout=30)
             checks = {
                 "git hook write": r.run(["sh", "-c", "echo x > .git/hooks/pre-commit"], timeout=30),
-                "ssh key read": r.run(["cat", str(home / ".ssh" / "id_ed25519")], timeout=30),
+                "ssh key read": r.run(["cat", os.path.join(home, ".ssh", "id_ed25519")], timeout=30),
                 ".env read": r.run(["cat", ".env"], timeout=30),
                 "symlink escape": r.run(["sh", "-c", "echo x > link_out/pwned"], timeout=30),
                 "network": r.run([py, "-c", "import socket;socket.create_connection(('1.1.1.1',53),timeout=3)"], timeout=30),
@@ -255,11 +275,49 @@ def test_bwrap_escape_suite(tree, tmp_path):
                 "nested userns": r.run(["unshare", "--user", "true"], timeout=30),
             }
             ok = r.run(["sh", "-c", "echo fine > src/out.txt && cat src/out.txt"], timeout=30)
+        assert visible.stdout == "visible"  # positive control: the fake home IS visible inside
         for name, res in checks.items():
             assert res.exit_code != 0 or res.stdout.strip() == "", f"{name} was not blocked: {res}"
-        assert checks["ssh key read"].stdout == "" and checks[".env read"].stdout == ""
-        assert not (home / "pwned").exists()
+        assert "PRIVATE" not in checks["ssh key read"].stdout and "SECRET" not in checks[".env read"].stdout
+        assert any(v.kind == "filesystem" for v in checks["git hook write"].violations)
+        assert not os.path.exists(os.path.join(home, "pwned"))
         assert not (ws / ".git" / "hooks" / "pre-commit").exists()
-        assert ok.stdout.strip() == "fine"
+        assert ok.stdout.strip() == "fine" and (ws / "src" / "out.txt").read_text() == "fine\n"
     finally:
         srv.close()
+
+
+@needs_bwrap
+def test_bwrap_allowlist_egress_through_proxy(tree):
+    import http.server
+    import threading
+
+    from harness_sandbox import EgressProxy, EscapeHatches
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *a):
+            pass
+
+    ws, home, _ = tree
+    origin = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=origin.serve_forever, daemon=True).start()
+    port = origin.server_address[1]
+    pol = SandboxPolicy(network=NetworkPolicy(mode=NetworkMode.ALLOWLIST, allowed_domains=("pkg.test",), allowed_ports=(port,)),
+                        escape_hatches=EscapeHatches(allowed_private_cidrs=("127.0.0.1/32",)))
+    fetch = "import urllib.request,sys;print(urllib.request.urlopen(sys.argv[1],timeout=10).read().decode())"
+    try:
+        with EgressProxy(pol, tcp=False, unix_socket=True, resolver=lambda h, p: ["127.0.0.1"]) as proxy, \
+                BubblewrapRunner(pol, ws, admin=True, proxy=proxy, home=str(home)) as r:
+            ok = r.run([sys.executable, "-c", fetch, f"http://pkg.test:{port}/"], timeout=30)
+            bad = r.run([sys.executable, "-c", fetch, f"http://exfil.test:{port}/"], timeout=30)
+        assert ok.stdout.strip() == "ok", ok.stderr
+        assert bad.exit_code != 0 and bad.violations[0].rule == "not-in-allowlist"
+    finally:
+        origin.shutdown()
+        origin.server_close()

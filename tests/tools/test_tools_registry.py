@@ -247,3 +247,15 @@ def test_telemetry_record_and_provider_tool(ctx):
     assert out.metadata["exit_code"] == 0 and records[-1].tool == "echo" and len(records[-1].args_sha256) == 64
     prov = r.execute(call("tool_search_tool_regex"), ctx)
     assert prov.is_error and "provider-executed" in prov.content and records[-1].error_class == "ProviderTool"
+
+
+def test_decorated_function_receives_run_context_not_in_schema():
+    r = ToolRegistry()
+
+    @r.tool(read_only=True)
+    def whoami(ctx: RunContext, verbose: bool = False) -> str:
+        """Return the current session id (for context-injection tests)."""
+        return f"{ctx.session_id}:{verbose}"
+
+    assert "ctx" not in r.get("whoami").spec.input_schema["properties"]
+    assert r.execute(ToolCall("c", "whoami", {"verbose": True}), RunContext(session_id="abc")).content == "abc:True"

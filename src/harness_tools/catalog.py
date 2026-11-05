@@ -202,7 +202,7 @@ def enable_tool_search(
             "properties": {
                 "query": {"type": "string", "minLength": 1, "maxLength": BM25_MAX_QUERY, "description": "What you need, or a regex when mode='regex'."},
                 "mode": {"type": "string", "enum": ["bm25", "regex"], "default": default_mode},
-                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_SEARCH_LIMIT, "default": default_limit},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_SEARCH_LIMIT, "default": default_limit, "description": "Maximum tools to load."},
             },
             "required": ["query"],
             "additionalProperties": False,

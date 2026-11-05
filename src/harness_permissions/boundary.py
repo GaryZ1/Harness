@@ -359,6 +359,7 @@ def _looks_like_path(token: str) -> bool:
 
 
 _UNSET = object()
+_SYSTEM_BIN_DIRS = ("/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/", "/usr/local/bin/", "/opt/homebrew/bin/")
 
 
 class _Classifier:
@@ -477,6 +478,15 @@ class _Classifier:
         if cmd.code_execution and not cmd.opaque:
             seg.add(Crossing.CODE_EXECUTION, f"{cmd.executable} executes code")
         exe = cmd.executable
+        exe_path = cmd.executable_path
+        if exe_path and not exe_path.startswith(_SYSTEM_BIN_DIRS):
+            # "./git" or "/tmp/git" may be a shim: never classify it by its basename (basename-only pitfall)
+            seg.add(Crossing.CODE_EXECUTION, f"runs program {exe_path!r} by path (not a system binary)")
+            self.access(seg, exe_path, self.resolve(exe_path, cmd.words[0].dynamic, cwd), False, "executable")
+            for a in _non_options(w.text for w in cmd.words[1:]):
+                if _looks_like_path(a):
+                    self.access(seg, a, self.resolve(a, False, cwd), False, exe_path)
+            return
         words = cmd.words[1:]
         args = [w.text for w in words]
         dyn = {w.text: w.dynamic for w in words}

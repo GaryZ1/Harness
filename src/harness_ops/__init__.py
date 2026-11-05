@@ -62,7 +62,7 @@ from .errors import (
     StepSerializationError,
 )
 from .events import EventExporter, FanoutEventSink, InMemoryEventExporter, JsonlEventExporter, SpanEventExporter, read_events
-from .exporters import InMemorySpanExporter, JsonlSpanExporter, read_spans, span_tree
+from .exporters import CriticalPath, InMemorySpanExporter, JsonlSpanExporter, critical_path, read_spans, span_tree
 from .flags import FeatureFlags, FlagRule, FlagSnapshot
 from .health import (
     DEFAULT_BURN_RATE_POLICIES,
@@ -139,6 +139,7 @@ __all__ = [
     "ContentPolicy",
     "CostBreakdown",
     "CostLedger",
+    "CriticalPath",
     "Counter",
     "DEFAULT_BURN_RATE_POLICIES",
     "DEFAULT_REQUEST_MAX_RETRIES",
@@ -226,6 +227,7 @@ __all__ = [
     "VersionState",
     "agent_span_name",
     "classify_error",
+    "critical_path",
     "current_run",
     "current_span",
     "default_alert_rules",

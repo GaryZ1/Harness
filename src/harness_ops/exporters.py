@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -118,3 +119,60 @@ def span_tree(spans: Iterable[SpanData]) -> dict[str | None, list[SpanData]]:
     for children in tree.values():
         children.sort(key=lambda s: s.start_ns)
     return tree
+
+
+@dataclass(frozen=True)
+class CriticalPath:
+    """Kimi K2.5's "critical steps": the longest *dependent* chain of steps, versus the total step count."""
+
+    steps: int
+    total_steps: int
+    duration_ms: float
+
+    @property
+    def parallelism(self) -> float:
+        return self.total_steps / self.steps if self.steps else 0.0
+
+
+_STEP_OPS = frozenset({"chat", "execute_tool"})
+
+
+def critical_path(spans: Iterable[SpanData], root_span_id: str | None = None) -> CriticalPath:
+    """Critical path of one trace (default root: the first root span).
+
+    A step is a ``chat`` or ``execute_tool`` span. Sibling spans whose time ranges overlap ran in
+    parallel (a fan-out), so only the longest of them counts; non-overlapping siblings are
+    sequential and add up. Use it to check whether a fan-out actually shortened the critical path
+    (reference §10.3 "Latency optimizations", checklist item 4).
+    """
+    spans = list(spans)
+    tree = span_tree(spans)
+    by_id = {s.span_id: s for s in spans}
+    root = by_id.get(root_span_id) if root_span_id else (tree.get(None) or [None])[0]
+    if root is None:
+        return CriticalPath(0, 0, 0.0)
+
+    def is_step(s: SpanData) -> bool:
+        return s.attributes.get("gen_ai.operation.name") in _STEP_OPS
+
+    def walk(s: SpanData, depth: int = 0) -> tuple[int, int]:
+        if depth > 256:
+            return 0, 0
+        children = tree.get(s.span_id, [])
+        crit, total = 0, 0
+        wave_end, wave_max = None, 0
+        for c in children:  # sorted by start time
+            c_crit, c_total = walk(c, depth + 1)
+            total += c_total
+            if wave_end is not None and c.start_ns < wave_end:  # overlaps the current wave: parallel
+                wave_max = max(wave_max, c_crit)
+                wave_end = max(wave_end, c.end_ns)
+            else:
+                crit += wave_max
+                wave_end, wave_max = c.end_ns, c_crit
+        crit += wave_max
+        own = 1 if is_step(s) else 0
+        return crit + own, total + own
+
+    steps, total = walk(root)
+    return CriticalPath(steps, total, root.duration_ms)

@@ -244,3 +244,26 @@ def test_allow_all_policy_runs_mutations():
     model = ScriptedModelClient([tool_response(("write", {})), text_response("ok")])
     AgentLoop(model, tools(log), policy=AllowAllPolicy()).run("go")
     assert log == [("write", {})]
+
+
+def test_harness_memory_task_guard_as_pre_tool_hook(tmp_path):
+    from harness_memory import guard_tool_call
+
+    hooks = HookRegistry()
+
+    def task_guard(inp):
+        decision = guard_tool_call(inp.tool_call.name, inp.tool_call.input, repo_root=tmp_path)
+        if not decision.allow:
+            return HookResult(permission=PermissionBehavior.DENY, reason=decision.reason)
+        return None
+
+    hooks.on(HookEvent.PRE_TOOL, task_guard)
+    ran = []
+    ex = FunctionToolExecutor()
+    ex.tool("Bash", "shell")(lambda inp, ctx: ran.append(inp["command"]) or "ok")
+    model = ScriptedModelClient([tool_response(("Bash", {"command": "rm tests/test_app.py"}, "t1"),
+                                               ("Bash", {"command": "ls"}, "t2")), text_response("ok")])
+    result = AgentLoop(model, ex, hooks=hooks, policy=AllowAllPolicy()).run("clean up")
+    r1, r2 = result.messages[2].tool_results
+    assert r1.is_error and "Permission denied" in r1.text and not r2.is_error
+    assert ran == ["ls"]

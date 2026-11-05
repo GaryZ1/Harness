@@ -48,6 +48,9 @@ metrics.render_prometheus()  # text exposition format 0.0.4
 (spend of *all* tasks ÷ successful tasks), `task_success_rate`, `tool_error_rate`, `tool_error_rate_by_tool`,
 `turns_per_task_p50`, `model_latency_p50_ms`/`p95_ms`, `ttft_p50_ms`/`p95_ms`, `task_duration_p50_ms`/`p95_ms`,
 `compactions_per_task`, `permission_rates`, `stop_reasons`, `retries_total`.
+The critical-path length for fan-outs is computed from a trace's spans by `harness_ops.critical_path` (see
+[tracing-and-events.md](tracing-and-events.md#exporters)). Online grader pass rate belongs to the evals package. Feed it in
+as a custom signal.
 
 Generic primitives: `MetricsRegistry.counter/gauge/histogram(name, help, labelnames)` are get-or-create. A name reused with a
 different type or label set raises. Histograms keep cumulative buckets for `histogram_quantile` and a sliding reservoir for
