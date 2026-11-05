@@ -64,9 +64,9 @@ def test_annotation_keeps_the_original_content():
 def test_model_classifier_is_optional_and_fails_closed():
     with pytest.raises(ValueError):
         ModelInjectionClassifier(Scripted(), "")
-    client = Scripted("INJECTION", "CLEAN", RuntimeError("timeout"), "maybe?")
-    probe = InjectionProbe(model=ModelInjectionClassifier(client, "probe-model"))
-    assert probe.scan("totally normal text").suspicious and probe.scan("x").model_verdict is None or True
+    client = Scripted("INJECTION")
+    flagged = InjectionProbe(model=ModelInjectionClassifier(client, "probe-model")).scan("totally normal looking text")
+    assert flagged.suspicious and flagged.model_verdict == "injection"   # the model catches what heuristics miss
     client2 = Scripted("CLEAN")
     assert not InjectionProbe(model=ModelInjectionClassifier(client2, "m")).scan("normal").suspicious
     for reply in (RuntimeError("down"), "maybe?"):
