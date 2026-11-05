@@ -70,7 +70,7 @@ from .paths import Workspace
 from .reviewer import DEFAULT_BLOCK_RULES, ActionReviewer, ReviewRequest, ReviewVerdict, TwoStageClassifier, review_inputs
 from .rules import Rule, RuleEffect, is_blanket, lint_rule
 from .shell import ShellAnalysis, SimpleCommand, analyze
-from .taint import SessionTaint, TaintSource
+from .taint import SessionTaint, TaintClearRefused, TaintSource
 
 __version__ = "0.1.0"
 
@@ -94,5 +94,5 @@ __all__ = [
     "DEFAULT_BLOCK_RULES", "ActionReviewer", "ReviewRequest", "ReviewVerdict", "TwoStageClassifier", "review_inputs",
     "Rule", "RuleEffect", "is_blanket", "lint_rule",
     "ShellAnalysis", "SimpleCommand", "analyze",
-    "SessionTaint", "TaintSource",
+    "SessionTaint", "TaintClearRefused", "TaintSource",
 ]

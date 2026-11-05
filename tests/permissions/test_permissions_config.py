@@ -184,3 +184,12 @@ def test_docs_reference_every_schema_key():
     documented = set(re.findall(r"`([a-z_]+\.[a-z_]+)`", doc)) | ({"version"} if "`version`" in doc else set())
     missing = [k for k in SCHEMA if k not in documented]
     assert not missing, missing
+
+
+def test_docs_full_example_is_a_valid_policy(tmp_path):
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "permissions" / "policy-file.md").read_text()
+    toml_block = re.search(r"```toml\n(.*?)```", doc, re.DOTALL).group(1)
+    yaml_block = re.search(r"```yaml\n(.*?)```", doc, re.DOTALL).group(1)
+    pol = resolve([load_policy_file(_write(tmp_path / "harness-policy.toml", toml_block)), load_policy_file(_write(tmp_path / "u.yaml", yaml_block), Layer.USER)])
+    assert pol.exec_policy.host_executables["git"].paths == ("/usr/bin/git",)
+    assert pol.hook_specs[0]["name"] == "no-main-push" and pol["workspace.session_branch"] == "claude/session-123"

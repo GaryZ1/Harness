@@ -34,7 +34,7 @@ _FLAGS = re.IGNORECASE | re.DOTALL
 #: (category, weight, pattern). Weight of a category = max weight among its hits.
 _PATTERNS: tuple[tuple[str, float, re.Pattern[str]], ...] = (
     ("instruction_override", 1.0, re.compile(
-        r"\b(ignore|disregard|forget|override|bypass|skip)\b.{0,40}\b(all|any|the|your|my|previous|prior|above|earlier|preceding|existing|original)\b.{0,30}\b(instructions?|prompts?|rules|directions|guidelines|guardrails|constraints|context|policies)\b", _FLAGS)),
+        r"\b(ignore|disregard|forget|override|bypass|skip)\b[^\n]{0,40}\b(all|any|the|your|my|previous|prior|above|earlier|preceding|existing|original)\b[^\n]{0,30}\b(instructions?|prompts?|rules|directions|guidelines|guardrails|constraints|context|policies)\b", _FLAGS)),
     ("instruction_override", 0.6, re.compile(r"\b(new|updated|real|actual|revised|true)\s+(system\s+)?(instructions?|system prompt|orders|directives)\b", _FLAGS)),
     ("role_hijack", 0.7, re.compile(r"\byou are (now|no longer)\b|\b(developer|god|jailbreak|dan) mode\b|\bact as (an? )?(admin|root|unrestricted|system)\b|\bfrom now on,? you\b", _FLAGS)),
     ("fake_role_tag", 0.8, re.compile(r"<\s*/?\s*(system|assistant|user|human|im_start|im_end|instructions?|sys)\s*>|\[/?(system|inst)\]|<\|(im_start|system|endoftext)\|>|(^|\n)\s*(###\s*)?(system|assistant)\s*:", _FLAGS)),
@@ -48,7 +48,7 @@ _PATTERNS: tuple[tuple[str, float, re.Pattern[str]], ...] = (
     ("concealment", 0.6, re.compile(r"\b(do not|don't|never)\s+(tell|inform|mention|reveal|notify|alert)\s+(this to\s+)?(the\s+)?(user|human|anyone|operator)\b|\bwithout (telling|informing|notifying) (the )?(user|human)\b", _FLAGS)),
     ("addressing_agent", 0.5, re.compile(r"\b(dear\s+)?(ai|assistant|agent|llm|language model|claude|chatgpt|gpt|copilot)\b\s*[,:!]\s*(please\s+)?(you must|you should|ignore|execute|run|send|stop|do not)", _FLAGS)),
     ("command_injection", 0.5, re.compile(r"\b(run|execute|exec|type)\b.{0,25}(`[^`]{2,}`|\b(curl|wget|bash -c|sh -c|rm -rf|nc -e|chmod \+x|base64 -d)\b)", _FLAGS)),
-    ("markdown_beacon", 0.7, re.compile(r"!\[[^\]]*\]\(\s*https?://[^)\s]*[?&][^)\s]*=[^)\s]*\)", _FLAGS)),
+    ("markdown_beacon", 0.8, re.compile(r"!\[[^\]]*\]\(\s*https?://[^)\s]*[?&][^)\s]*=[^)\s]*\)", _FLAGS)),
     ("hidden_comment", 0.6, re.compile(r"<!--.{0,400}?\b(ignore|instruction|assistant|agent|ai|model|system|prompt)\b.{0,400}?-->", _FLAGS)),
     ("urgency", 0.3, re.compile(r"\b(important|urgent|critical|attention|warning)\b\s*[:!]+.{0,60}\b(must|immediately|right now|required)\b", _FLAGS)),
 )

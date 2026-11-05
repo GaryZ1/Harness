@@ -40,7 +40,7 @@ from harness_permissions import (
     parse_policy,
     resolve,
 )
-from harness_permissions.taint import TaintEvent
+from harness_permissions.taint import TaintClearRefused, TaintEvent
 
 ALLOW, ASK, DENY = PermissionBehavior.ALLOW, PermissionBehavior.ASK, PermissionBehavior.DENY
 
@@ -277,7 +277,7 @@ def test_taint_makes_outward_actions_ask_even_with_allow_rules(ws):
     assert call(eng, ctx, "Edit", file_path="src/a.py").behavior is ALLOW      # in-boundary work continues
     rec = call(eng, ctx, "WebFetch", url="https://new.example/")
     assert rec.behavior is ASK and rec.human_only                              # new egress: human only
-    with pytest.raises(Exception):
+    with pytest.raises(TaintClearRefused):
         eng.clear_taint("s1", confirmed_by_user=False)
     eng.clear_taint("s1", confirmed_by_user=True, ctx=ctx)
     assert bash(eng, ctx, "git push origin main").behavior is ALLOW
@@ -330,6 +330,7 @@ def test_network_target_normalisation(ws):
 def test_subagents_inherit_and_cannot_escalate(ws):
     eng, parent = make(ws, {"subagents": {"max_depth": 2}}, mode="default")
     eng.session(parent).taint.mark(TaintEvent(TaintSource.MANUAL, "-", "test"))
+    assert call(eng, parent, "Agent", subagent_type="Explore").behavior is ALLOW   # launching does not prompt
     child = RunContext("child", cwd=ws.root, agent_name="explorer", depth=1)
     st = eng.register_subagent(parent, child, requested_mode="auto")
     assert st.mode.value == "default" and st.taint.tainted

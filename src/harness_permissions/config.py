@@ -231,7 +231,7 @@ class Key:
 
 SCHEMA: dict[str, Key] = {k.name: k for k in [
     Key("version", _posint, 1, "highest", "Schema version. Only 1 exists.", "ours"),
-    Key("defaults.interactive_mode", _mode, "auto", "least_permissive_mode", "Mode for interactive sessions: plan | dont-ask | default | accept-edits | auto | bypass.", "schema"),
+    Key("defaults.interactive_mode", _mode, "auto", "least_permissive_mode", "Mode for interactive sessions: plan, dont-ask, default, accept-edits, auto or bypass.", "schema"),
     Key("defaults.headless_mode", _mode, "dont-ask", "least_permissive_mode", "Mode for headless runs (no human attached).", "schema"),
     Key("defaults.sandbox", _enum("none", "read-only", "workspace-write", "external"), "workspace-write", "highest", "OS sandbox the host runs tools in. Mutating shell commands are boundary-auto-allowed only under workspace-write.", "schema"),
     Key("defaults.deny_wins", _must_be_true, True, "highest", "Deny > ask > allow. Must be true.", "schema"),

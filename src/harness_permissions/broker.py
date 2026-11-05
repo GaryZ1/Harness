@@ -329,9 +329,10 @@ class ApprovalBroker:
                 if "new_egress_domain" in item.crossings:
                     self.engine.approve_domain(item.session_id, d)
         if not item.suggested_rules:
-            if item.layer in {"L0_integrity"} or "new_egress_domain" in item.crossings:
-                return ApprovalScope.SESSION, note
-            return ApprovalScope.ONCE, (note + "; " if note else "") + "no narrow rule can cover this call: approved once"
+            extra = "no narrow rule can cover this call: approved once"
+            if "new_egress_domain" in item.crossings and record is not None and record.profile.domains:
+                extra += f" (egress to {', '.join(record.profile.domains)} approved for the session)"
+            return ApprovalScope.ONCE, (note + "; " if note else "") + extra
         for rule in item.suggested_rules:
             try:
                 self.engine.add_session_rule(item.session_id, rule)

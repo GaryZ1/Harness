@@ -600,7 +600,10 @@ class PolicyEngine:
         strict = bool(strict_hits)
         human_only = tainted and profile.has(Crossing.NEW_EGRESS_DOMAIN)
 
-        # L3 boundary auto-allow
+        # L3 boundary auto-allow ("launching a subagent doesn't prompt, but the subagent's tool calls are
+        # checked"); auto mode sends spawns to the reviewer (tier 3)
+        if profile.kind is ToolKind.SUBAGENT and not strict and not (mode is PermissionMode.AUTO and self.reviewer is not None and p["classifier.enabled"]):
+            return rec(ALLOW, "L3_boundary", "sub-agent launch; the sub-agent's own calls are checked against this policy")
         if not strict and self._in_boundary(profile, mode):
             return rec(ALLOW, "L3_boundary", "inside the workspace boundary")
 
