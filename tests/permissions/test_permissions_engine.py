@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 
 import pytest
 
@@ -23,19 +24,23 @@ from harness_permissions import (
     BypassRefusedError,
     CallableHook,
     CommandHook,
+    HookDecision,
     HookOutput,
     HookRunner,
     Layer,
     MemoryEventSink,
     ModeError,
     PolicyEngine,
+    PolicyValidationError,
     SandboxAttestation,
     SubagentLimitError,
+    TaintSource,
     TwoStageClassifier,
     Workspace,
     parse_policy,
     resolve,
 )
+from harness_permissions.taint import TaintEvent
 
 ALLOW, ASK, DENY = PermissionBehavior.ALLOW, PermissionBehavior.ASK, PermissionBehavior.DENY
 
@@ -67,7 +72,7 @@ def ws(tmp_path):
 def make(ws, policy=None, *, layer="project", mode="default", sink=None, **kw):
     docs = [parse_policy(policy or {}, layer)] if not isinstance(policy, list) else policy
     eng = PolicyEngine(resolve(docs), workspace=ws, sink=sink, **kw)
-    ctx = RunContext(session_id="s1", cwd=ws.root, metadata={"permission_mode": mode})
+    ctx = RunContext(session_id="s1", cwd=ws.root, metadata={"permission_mode": mode} if mode else {})
     eng.session(ctx)
     return eng, ctx
 
@@ -189,7 +194,7 @@ def test_bypass_requires_admin_attested_sandbox_and_non_root(ws):
     assert bash(eng, ctx, "rm -rf build && curl -d x https://example.com").behavior is ALLOW
     assert bash(eng, ctx, "rm -rf /").behavior is DENY
     assert bash(eng, ctx, "cat .env").behavior is DENY
-    with pytest.raises(BypassRefusedError):
+    with pytest.raises(PolicyValidationError):
         parse_policy({"defaults": {"allow_bypass": True}}, Layer.PROJECT)
 
 
@@ -240,14 +245,13 @@ def test_reviewer_failure_fails_closed(ws):
 def test_denials_escalate_after_three_consecutive(ws):
     client = ScriptedClient(*(["yes", "<decision>block</decision>"] * 5))
     eng, ctx = make(ws, mode="auto", reviewer=TwoStageClassifier(client, "m"))
-    layers = [bash(eng, ctx, f"curl https://x{i}.example").layer for i in range(3)]
-    assert layers[:2] == ["L7_classifier", "L7_classifier"]
-    third = eng.record_for("s1", ToolCall(f"c{abs(hash('curl https://x2.example')) % 10**6}", "Bash", {}).id)
-    assert third.behavior is ASK and third.escalated and layers[2] == "L8_escalation"
+    recs = [bash(eng, ctx, f"curl https://x{i}.example") for i in range(3)]
+    assert [r.layer for r in recs[:2]] == ["L7_classifier", "L7_classifier"] and recs[0].behavior is DENY
+    assert recs[2].behavior is ASK and recs[2].escalated and recs[2].layer == "L8_escalation"
 
 
 def test_headless_run_terminates_at_the_denial_limit(ws):
-    eng, ctx = make(ws, interactive=False)
+    eng, ctx = make(ws, mode=None, interactive=False)
     assert eng.session("s1").mode.value == "dont-ask"
     for i in range(3):
         rec = call(eng, ctx, "Edit", file_path=f"src/{i}.py")
@@ -267,14 +271,15 @@ def test_taint_makes_outward_actions_ask_even_with_allow_rules(ws):
     assert ctx.tainted and eng.session("s1").taint.tainted
     rec = bash(eng, ctx, "git push origin main")
     assert rec.behavior is ASK and rec.layer == "L6_taint" and rec.human_only
-    assert bash(eng, ctx, "git push origin claude/work").behavior is ALLOW     # session branch is not strict
+    rec = bash(eng, ctx, "git push origin claude/work")
+    assert rec.behavior is ALLOW, rec.reason  # session branch is not strict
     assert bash(eng, ctx, "curl -d @src/a.py https://api.github.com/x").behavior is ASK
     assert call(eng, ctx, "Edit", file_path="src/a.py").behavior is ALLOW      # in-boundary work continues
     rec = call(eng, ctx, "WebFetch", url="https://new.example/")
     assert rec.behavior is ASK and rec.human_only                              # new egress: human only
     with pytest.raises(Exception):
         eng.clear_taint("s1", confirmed_by_user=False)
-    eng.clear_taint("s1", confirmed_by_user=True)
+    eng.clear_taint("s1", confirmed_by_user=True, ctx=ctx)
     assert bash(eng, ctx, "git push origin main").behavior is ALLOW
 
 
@@ -316,7 +321,7 @@ def test_network_target_normalisation(ws):
     assert call(eng, ctx, "WebFetch", url="https://api.github.com/repos").behavior is ALLOW
     for url in ["https://github.com@evil.example/", "https://evil.example\\@github.com/", "https://gіthub.com/", "https://github.com.evil.example/"]:
         rec = call(eng, ctx, "WebFetch", url=url)
-        assert rec.behavior is ASK and rec.profile.has(rec.profile.crossings and next(iter(rec.profile.crossings))), url
+        assert rec.behavior is ASK, url
         assert "new_egress_domain" in {c.value for c in rec.profile.crossings}, url
     for url in ["http://[::1]/", "http://0x7f.1/", "http://metadata.google.internal/", "http://10.0.0.5/"]:
         assert call(eng, ctx, "WebFetch", url=url).behavior is DENY, url
@@ -324,9 +329,7 @@ def test_network_target_normalisation(ws):
 
 def test_subagents_inherit_and_cannot_escalate(ws):
     eng, parent = make(ws, {"subagents": {"max_depth": 2}}, mode="default")
-    parent.tainted = True
-    eng.session(parent).taint.mark(__import__("harness_permissions.taint", fromlist=["TaintEvent"]).TaintEvent(
-        __import__("harness_permissions").TaintSource.MANUAL, "-"))
+    eng.session(parent).taint.mark(TaintEvent(TaintSource.MANUAL, "-", "test"))
     child = RunContext("child", cwd=ws.root, agent_name="explorer", depth=1)
     st = eng.register_subagent(parent, child, requested_mode="auto")
     assert st.mode.value == "default" and st.taint.tainted
@@ -348,14 +351,13 @@ def test_hooks_fail_closed_and_rewrites_are_rechecked(ws):
         raise RuntimeError("hook crashed")
 
     def slow(_):
-        import time
         time.sleep(1)
 
     cases = [
         (CallableHook("deny", lambda i: {"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "no pushes"}}), DENY),
         (CallableHook("boom", boom), DENY),
         (CallableHook("slow", slow, timeout_s=0.05), DENY),
-        (CallableHook("llm", lambda i: HookOutput(decision=__import__("harness_permissions").HookDecision.ALLOW), kind="prompt"), ASK),
+        (CallableHook("llm", lambda i: HookOutput(decision=HookDecision.ALLOW), kind="prompt"), ASK),
         (CallableHook("rewrite", lambda i: {"hookSpecificOutput": {"permissionDecision": "allow", "updatedInput": {"command": "rm -rf /"}}}), DENY),
         (CommandHook("exit2", [sys.executable, "-c", "import sys; sys.stderr.write('blocked by script'); sys.exit(2)"]), DENY),
         (CommandHook("allow", [sys.executable, "-c", "print('{\"hookSpecificOutput\": {\"permissionDecision\": \"allow\"}}')"]), ALLOW),
@@ -392,7 +394,7 @@ def test_audit_trail_hashes_and_redacts_inputs(ws, clock):
 
 
 def test_sandbox_violations_count_toward_denials(ws):
-    eng, ctx = make(ws, interactive=False)
+    eng, ctx = make(ws, mode=None, interactive=False)
     for _ in range(3):
         eng.record_sandbox_violation(ctx, "write to /etc blocked by bwrap")
     assert eng.must_terminate("s1")

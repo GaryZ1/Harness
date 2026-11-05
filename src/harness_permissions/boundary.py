@@ -596,7 +596,8 @@ class _Classifier:
                 literal = t.rstrip("/") or "/"
                 resolved = self.resolve(t, dyn.get(t, False), cwd)
                 ws_ancestor = bool(resolved) and any(r == resolved or r.startswith(resolved.rstrip("/") + "/") for r in self.ws.roots)
-                if recursive and (literal in _CATASTROPHIC_TARGETS and literal not in {".", "..", "*"} or resolved in {"/", self.home} or (ws_ancestor and resolved != self.ws.root)):
+                # recursive delete of /, $HOME, a system dir, or a workspace root (or its ancestor)
+                if recursive and (literal in _CATASTROPHIC_TARGETS and literal not in {".", "..", "*"} or resolved in {"/", self.home} or ws_ancestor):
                     seg.add(Crossing.CATASTROPHIC, f"recursive delete of {t!r}")
             if recursive:
                 seg.add(Crossing.IRREVERSIBLE, f"{exe} -r deletes trees (not covered by checkpoints)")

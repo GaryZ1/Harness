@@ -131,12 +131,16 @@ def test_timeout_sets_cancel_event_and_is_not_retried(tmp_path):
 def test_concurrency_cap_respected(tmp_path):
     active, peak = [0], [0]
     lock = threading.Lock()
+    overlapped = threading.Event()
 
     def agent(task, ws, ctx):
         with lock:
             active[0] += 1
             peak[0] = max(peak[0], active[0])
-        time.sleep(0.05)
+            if active[0] >= 2:
+                overlapped.set()
+        overlapped.wait(2)  # wait for a peer so the cap is actually exercised, independent of machine load
+        time.sleep(0.01)
         with lock:
             active[0] -= 1
         (ws / "out.txt").write_text("ok")

@@ -335,8 +335,11 @@ class PolicyEngine:
             st.plan_lock = parsed
         self.audit.emit(session_id, "plan_locked", rules=[r.source for r in parsed])
 
-    def clear_taint(self, session_id: str, *, confirmed_by_user: bool) -> None:
+    def clear_taint(self, session_id: str, *, confirmed_by_user: bool, ctx: RunContext | None = None) -> None:
+        """Explicit user action only. Pass the loop's ``ctx`` so its ``tainted`` flag is reset too."""
         self.session(session_id).taint.clear(confirmed_by_user=confirmed_by_user)
+        if ctx is not None:
+            ctx.tainted = False
         self.audit.emit(session_id, "taint_cleared")
 
     def record_human_decision(self, session_id: str, approved: bool, latency_s: float, suggestion: str | None = None) -> None:
@@ -372,6 +375,7 @@ class PolicyEngine:
         if ctx.tainted and not st.taint.tainted:
             st.taint.mark(TaintEvent(TaintSource.MANUAL, call.name, "RunContext.tainted"))
         rec = self._decide(call, spec, ctx, st, run_hooks=True)
+        assert rec is not None
         rec = self._postprocess(rec, call, spec, ctx, st)
         with self._lock:
             self._records[(ctx.session_id, call.id)] = rec
@@ -522,14 +526,17 @@ class PolicyEngine:
             strict=strict or "cot_on_flag" not in p["classifier.stages"],
         )
 
-    def _decide(self, call: ToolCall, spec: ToolSpec | None, ctx: RunContext, st: SessionState, *, run_hooks: bool) -> DecisionRecord:
+    def _decide(self, call: ToolCall, spec: ToolSpec | None, ctx: RunContext, st: SessionState, *, run_hooks: bool, upto_rules: bool = False) -> DecisionRecord | None:
+        """Run the pipeline. With ``upto_rules`` it stops after L4 and returns ``None`` if no layer decided."""
         p = self.policy
         mode = st.mode
         tainted = st.taint.tainted
         profile = classify(call, spec, ctx, self.workspace, self._boundary_cfg(st))
+        updated: dict[str, Any] | None = None
+        note = ""
 
         def rec(behavior: PermissionBehavior, layer: str, reason: str, **kw: Any) -> DecisionRecord:
-            return DecisionRecord(behavior, reason, layer, profile, mode, tainted, **kw)
+            return DecisionRecord(behavior, note + reason, layer, profile, mode, tainted, updated_input=updated, **kw)
 
         ALLOW, ASK, DENY = PermissionBehavior.ALLOW, PermissionBehavior.ASK, PermissionBehavior.DENY
         if st.terminated:
@@ -603,6 +610,9 @@ class PolicyEngine:
             if covered:
                 return rec(ALLOW, "L4_rule", f"allowed by {covered}", rule=covered)
 
+        if upto_rules:
+            return None
+
         # L5 hooks
         if run_hooks and self.hooks.hooks:
             hi = HookInput("PreToolUse", ctx.session_id, call.name, dict(call.input), call.id, ctx.cwd, mode.value, ctx.agent_name, ctx.depth, tainted)
@@ -610,13 +620,20 @@ class PolicyEngine:
             if out.decision is HookDecision.DENY:
                 return rec(DENY, "L5_hook", out.reason or "denied by hook", rule=out.hook or None)
             if out.updated_input is not None:
+                # a rewrite is re-checked by every deterministic layer (L0-L4) before anything else
                 rewritten = ToolCall(call.id, call.name, dict(out.updated_input))
-                inner = self._decide(rewritten, spec, ctx, st, run_hooks=False)
-                inner.updated_input = dict(out.updated_input)
-                inner.reason = f"input rewritten by hook; {inner.reason}"
-                if out.decision is HookDecision.ASK and inner.behavior is ALLOW:
-                    inner.behavior, inner.layer = ASK, "L5_hook"
-                return inner
+                inner = self._decide(rewritten, spec, ctx, st, run_hooks=False, upto_rules=True)
+                if inner is not None:
+                    inner.updated_input = dict(out.updated_input)
+                    inner.reason = f"input rewritten by hook {out.hook or ''}; {inner.reason}"
+                    if out.decision is HookDecision.ASK and inner.behavior is ALLOW:
+                        inner.behavior, inner.layer = ASK, "L5_hook"
+                    return inner
+                call, updated, note = rewritten, dict(out.updated_input), "input rewritten by hook; "
+                profile = classify(call, spec, ctx, self.workspace, self._boundary_cfg(st))
+                strict_hits = sorted(c.value for c in profile.crossings if c.value in strict_set) if tainted else []
+                strict = bool(strict_hits)
+                human_only = tainted and profile.has(Crossing.NEW_EGRESS_DOMAIN)
             if out.decision is HookDecision.ASK:
                 return rec(ASK, "L5_hook", out.reason or "hook asks for confirmation")
             if out.decision is HookDecision.ALLOW and not strict and not (profile.has(*OUTWARD) or profile.has(Crossing.NEW_EGRESS_DOMAIN)):
